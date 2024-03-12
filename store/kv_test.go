@@ -20,7 +20,6 @@ func TestCommandSet_Apply(t *testing.T) {
 		t.Errorf("Error applying command: %v", err)
 	}
 
-	// happy path
 	if actor.store["hello"] != "world" {
 		t.Errorf("Expected 'world' but got %s", actor.store["hello"])
 	}
@@ -42,7 +41,6 @@ func TestCommandGet_Apply(t *testing.T) {
 		t.Errorf("Error applying command: %v", err)
 	}
 
-	// happy path
 	cmdGet := CommandGet{Key: "hello", Response: make(chan string, 1), Error: make(chan error)}
 	go func() {
 		err = cmdGet.Apply(actor)
@@ -88,7 +86,6 @@ func TestCommandDelete_Apply(t *testing.T) {
 		t.Errorf("Error applying command: %v", err)
 	}
 
-	// happy path
 	cmdDel := CommandDelete{Key: "hello", Error: make(chan error)}
 	err = cmdDel.Apply(actor)
 	if err != nil {
@@ -133,7 +130,6 @@ func TestActor_Set(t *testing.T) {
 
 	actor := NewActor()
 
-	// happy path
 	go actor.Set("hello", "world")
 	time.Sleep(time.Second)
 
@@ -149,6 +145,24 @@ func TestActor_Set(t *testing.T) {
 	logs := buf.String()
 	if !strings.Contains(logs, "Error applying command: key hello already exists") {
 		t.Errorf("Expected error message but got %s", logs)
+	}
+}
+
+func TestActor_Get(t *testing.T) {
+	actor := NewActor()
+
+	go actor.Set("hello", "world")
+	time.Sleep(time.Second)
+
+	val, err := actor.Get("hello")
+	if err != nil || val != "world" {
+		t.Errorf("Unexpected error or value after Set: %v, %s", err, val)
+	}
+
+	// error case
+	val, err = actor.Get("hello_notfound")
+	if err == nil || val != "" {
+		t.Errorf("Expected error but got nil or value: %v, %s", err, val)
 	}
 }
 
