@@ -20,17 +20,6 @@ type CommandSet struct {
 	Error chan error
 }
 
-type CommandGet struct {
-	Key      string
-	Response chan string
-	Error    chan error
-}
-
-type CommandDelete struct {
-	Key   string
-	Error chan error
-}
-
 func (c CommandSet) Apply(a *Actor) error {
 	_, exists := a.store[c.Key]
 	if exists {
@@ -40,6 +29,12 @@ func (c CommandSet) Apply(a *Actor) error {
 
 	a.store[c.Key] = c.Value
 	return nil
+}
+
+type CommandGet struct {
+	Key      string
+	Response chan string
+	Error    chan error
 }
 
 func (c CommandGet) Apply(a *Actor) error {
@@ -54,6 +49,11 @@ func (c CommandGet) Apply(a *Actor) error {
 	close(c.Response)
 
 	return nil
+}
+
+type CommandDelete struct {
+	Key   string
+	Error chan error
 }
 
 func (c CommandDelete) Apply(a *Actor) error {
@@ -74,17 +74,6 @@ type Actor struct {
 	commands chan Command
 }
 
-func NewActor() *Actor {
-	a := &Actor{
-		store:    make(map[string]string),
-		commands: make(chan Command),
-	}
-
-	go a.run()
-
-	return a
-}
-
 func (a *Actor) run() {
 	for cmd := range a.commands {
 		//fmt.Println("command:", cmd)
@@ -98,7 +87,6 @@ func (a *Actor) run() {
 func (a *Actor) Set(key, value string) error {
 	errChan := make(chan error)
 	a.commands <- CommandSet{Key: key, Value: value, Error: errChan}
-
 	//fmt.Println("Set command key:", key, "value:", value)
 
 	go func() {
@@ -110,6 +98,7 @@ func (a *Actor) Set(key, value string) error {
 
 	return nil
 }
+
 func (a *Actor) Get(key string) (string, error) {
 	responseChan := make(chan string)
 	errorChan := make(chan error)
@@ -143,6 +132,18 @@ func (a *Actor) List() map[string]string {
 	return a.store
 }
 
+func NewActor() *Actor {
+	a := &Actor{
+		store:    make(map[string]string),
+		commands: make(chan Command),
+	}
+
+	go a.run()
+
+	return a
+}
+
+// http handler
 func KvHandler(a *Actor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Path[1:]
