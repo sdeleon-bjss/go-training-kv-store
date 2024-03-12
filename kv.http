@@ -1,0 +1,17 @@
+# vars
+@key = hello
+
+### POST request to set a value
+POST http://localhost:8080/{{key}}
+Content-Type: text/plain
+
+world
+
+### GET request to retrieve a value
+GET http://localhost:8080/{{key}}
+
+### DELETE request to delete a key-value pair
+DELETE http://localhost:8080/{{key}}
+
+### GET all kv pairs
+GET http://localhost:8080/list
