@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bjss-kv-store/store"
+	"github.com/sdeleon-bjss/store"
 	"net/http"
 )
 
