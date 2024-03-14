@@ -12,74 +12,81 @@ import (
 // Command tests
 
 func TestCommandSet_Apply(t *testing.T) {
-	// given
+	// arrange
 	actor := NewActor()
 
-	// when
+	// act
 	cmd := CommandSet{Key: "hello", Value: "world", Error: make(chan error)}
 	err := cmd.Apply(actor)
 	if err != nil {
 		t.Errorf("Error applying command: %v", err)
 	}
 
-	// then
+	// assert
 	if actor.store["hello"] != "world" {
 		t.Errorf("Expected 'world' but got %s", actor.store["hello"])
 	}
+}
 
-	// given error
-	cmd = CommandSet{Key: "hello", Value: "world", Error: make(chan error)}
-	err = cmd.Apply(actor)
+func TestCommandSet_ApplyError(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
 
-	// then
+	// act
+	cmd := CommandSet{Key: "hello", Value: "world", Error: make(chan error)}
+	err := cmd.Apply(actor)
+
+	// assert
 	if err == nil {
 		t.Errorf("Expected error but got nil")
 	}
 }
 
 func TestCommandGet_Apply(t *testing.T) {
-	// given
+	// arrange
 	actor := NewActor()
+	actor.store["hello"] = "world"
 
-	cmdSet := CommandSet{Key: "hello", Value: "world", Error: make(chan error)}
-	err := cmdSet.Apply(actor)
-	if err != nil {
-		t.Errorf("Error applying command: %v", err)
-	}
-
-	// when
+	// act
 	cmdGet := CommandGet{Key: "hello", Response: make(chan string, 1), Error: make(chan error)}
 	go func() {
-		err = cmdGet.Apply(actor)
+		err := cmdGet.Apply(actor)
 		if err != nil {
 			t.Errorf("Error applying command: %v", err)
 		}
 	}()
 
-	// then
+	// assert
 	select {
 	case res := <-cmdGet.Response:
 		if res != "world" {
 			t.Errorf("Expected 'world' but got %s", res)
 		}
-	case err = <-cmdGet.Error:
+	case err := <-cmdGet.Error:
 		t.Errorf("Error getting key: %v", err)
 	}
+}
 
-	// given error
-	cmdGet = CommandGet{Key: "hello_notfound", Response: make(chan string, 1), Error: make(chan error)}
+func TestCommandGet_ApplyError(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
+
+	// act
+	cmdGet := CommandGet{Key: "hello_notfound", Response: make(chan string, 1), Error: make(chan error)}
 	go func() {
-		err = cmdGet.Apply(actor)
-		if err != nil {
-			t.Errorf("Error applying command: %v", err)
+		err := cmdGet.Apply(actor)
+		if err == nil {
+			t.Errorf("Expected error but got nil")
 		}
 	}()
 
-	// then
+	// assert
 	select {
 	case res := <-cmdGet.Response:
 		t.Errorf("Expected empty response but got %s", res)
-	case err = <-cmdGet.Error:
+	case err := <-cmdGet.Error:
 		if err == nil {
 			t.Errorf("Expected error but got nil")
 		}
@@ -87,135 +94,154 @@ func TestCommandGet_Apply(t *testing.T) {
 }
 
 func TestCommandDelete_Apply(t *testing.T) {
-	// given
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
+
+	// act
+	cmdDel := CommandDelete{Key: "hello", Error: make(chan error)}
+	err := cmdDel.Apply(actor)
+	if err != nil {
+		t.Errorf("Error applying command: %v", err)
+	}
+
+	// assert
+	if _, ok := actor.store["hello"]; ok {
+		t.Errorf("Expected key to be deleted but still exists")
+	}
+}
+
+func TestCommandDelete_ApplyError(t *testing.T) {
+	// arrange
 	actor := NewActor()
 
-	cmdSet := CommandSet{Key: "hello", Value: "world", Error: make(chan error)}
-	err := cmdSet.Apply(actor)
-	if err != nil {
-		t.Errorf("Error applying command: %v", err)
-	}
+	// act
+	cmdDel := CommandDelete{Key: "hello_notfound", Error: make(chan error)}
+	err := cmdDel.Apply(actor)
 
-	// when
-	cmdDel := CommandDelete{Key: "hello", Error: make(chan error)}
-	err = cmdDel.Apply(actor)
-	if err != nil {
-		t.Errorf("Error applying command: %v", err)
-	}
-
-	// error case
-	cmdDel = CommandDelete{Key: "hello_notfound", Error: make(chan error)}
-	err = cmdDel.Apply(actor)
+	// assert
 	if err == nil {
 		t.Errorf("Expected error but got nil")
-	}
-
-	// check if key was deleted
-	cmdGet := CommandGet{Key: "hello", Response: make(chan string, 1), Error: make(chan error)}
-	go func() {
-		err = cmdGet.Apply(actor)
-		if err != nil {
-			t.Errorf("Error applying command: %v", err)
-		}
-	}()
-
-	select {
-	case res := <-cmdGet.Response:
-		t.Errorf("Expected empty response but got %s", res)
-	case err = <-cmdGet.Error:
-		if err == nil {
-			t.Errorf("Expected error but got nil")
-		}
 	}
 }
 
 // Actor tests
 
 func TestActor_Set(t *testing.T) {
-	// buffer
-	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
-	defer func() {
-		log.SetOutput(os.Stderr)
-	}()
-
+	// arrange
 	actor := NewActor()
 
+	// act
 	go actor.Set("hello", "world")
 	time.Sleep(time.Second)
 
+	// assert
 	val, err := actor.Get("hello")
 	if err != nil || val != "world" {
 		t.Errorf("Unexpected error or value after Set: %v, %s", err, val)
 	}
+}
 
-	// error case
-	go actor.Set("hello", "world2")
+func TestActor_SetError(t *testing.T) {
+	// buffer
+	buffer := &bytes.Buffer{}
+	log.SetOutput(buffer)
+	defer func() {
+		log.SetOutput(os.Stderr)
+	}()
+
+	// arrange
+	actor := NewActor()
+
+	// act
+	go actor.Set("hello", "world")
 	time.Sleep(time.Second)
 
-	logs := buf.String()
+	// act
+	go actor.Set("hello", "world again")
+	time.Sleep(time.Second)
+
+	// assert
+	logs := buffer.String()
 	if !strings.Contains(logs, "Error applying command: key hello already exists") {
 		t.Errorf("Expected error message but got %s", logs)
 	}
 }
 
 func TestActor_Get(t *testing.T) {
+	// arrange
 	actor := NewActor()
+	actor.store["hello"] = "world"
 
-	go actor.Set("hello", "world")
-	time.Sleep(time.Second)
-
+	// act
 	val, err := actor.Get("hello")
+
+	// assert
 	if err != nil || val != "world" {
 		t.Errorf("Unexpected error or value after Set: %v, %s", err, val)
 	}
+}
 
-	// error case
-	val, err = actor.Get("hello_notfound")
+func TestAction_GetError(t *testing.T) {
+	// arrange
+	actor := NewActor()
+
+	// act
+	val, err := actor.Get("hello")
+
+	// assert
 	if err == nil || val != "" {
 		t.Errorf("Expected error but got nil or value: %v, %s", err, val)
 	}
 }
 
 func TestActor_Delete(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
+
+	// act
+	go actor.Delete("hello")
+	time.Sleep(time.Second)
+
+	// assert
+	if _, ok := actor.store["hello"]; ok {
+		t.Errorf("Expected key to be deleted but still exists")
+	}
+}
+
+func TestActor_DeleteError(t *testing.T) {
 	// buffer
-	buf := &bytes.Buffer{}
-	log.SetOutput(buf)
+	buffer := &bytes.Buffer{}
+	log.SetOutput(buffer)
 	defer func() {
 		log.SetOutput(os.Stderr)
 	}()
 
+	// arrange
 	actor := NewActor()
 
-	go actor.Set("hello", "world")
-	time.Sleep(time.Second)
-
+	// act
 	go actor.Delete("hello")
 	time.Sleep(time.Second)
 
-	val, err := actor.Get("hello")
-	if err == nil || val != "" {
-		t.Errorf("Expected error but got nil or value: %v, %s", err, val)
-	}
-
-	// error case
-	go actor.Delete("hello_notfound")
-	time.Sleep(time.Second)
-
-	logs := buf.String()
-	if !strings.Contains(logs, "Error applying command: key hello_notfound does not exist") {
-		t.Errorf("Expected an error log for key %q but got: %s", "hello_notfound", logs)
+	// assert
+	logs := buffer.String()
+	if !strings.Contains(logs, "Error applying command: key hello does not exist") {
+		t.Errorf("Expected error message but got %s", logs)
 	}
 }
 
 func TestActor_List(t *testing.T) {
+	// arrange
 	actor := NewActor()
+	actor.store["hello"] = "world"
+	actor.store["hello2"] = "world2"
 
-	go actor.Set("hello", "world")
-	go actor.Set("hello2", "world2")
-	time.Sleep(time.Second)
-
+	// act
 	list := actor.List()
+
+	// assert
 	if len(list) != 2 {
 		t.Errorf("Expected 2 keys but got %v", list)
 	}

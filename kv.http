@@ -5,7 +5,7 @@
 POST http://localhost:8080/{{key}}
 Content-Type: text/plain
 
-world
+world again
 
 ### GET request to retrieve a value
 GET http://localhost:8080/{{key}}

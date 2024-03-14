@@ -41,7 +41,7 @@ func (c CommandGet) Apply(a *Actor) error {
 	val, ok := a.store[c.Key]
 	if !ok {
 		c.Error <- fmt.Errorf("key %s does not exist", c.Key)
-		return nil
+		return fmt.Errorf("key %s does not exist", c.Key)
 	}
 	//println("val getcommand:", val)
 
