@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 // Command tests
+
+var wg sync.WaitGroup
 
 func TestCommandSet_Apply(t *testing.T) {
 	// arrange
@@ -168,6 +172,50 @@ func TestActor_SetError(t *testing.T) {
 	}
 }
 
+func TestActor_ConcurrentSet(t *testing.T) {
+	// arrange
+	actor := NewActor()
+
+	// act
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			actor.Set("key"+strconv.Itoa(i), "world")
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	// assert
+	list := actor.List()
+	if len(list) != 10 {
+		t.Errorf("Expected 10 keys but got %v", list)
+	}
+}
+
+func TestActor_ConcurrentSetSameKey(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.quiet = true
+	key := "hello"
+
+	// act
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			actor.Set(key, "world")
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	// assert
+	val, err := actor.Get(key)
+	if err != nil || val != "world" {
+		t.Errorf("Unexpected error or value after Set: %v, %s", err, val)
+	}
+}
+
 func TestActor_Get(t *testing.T) {
 	// arrange
 	actor := NewActor()
@@ -182,7 +230,7 @@ func TestActor_Get(t *testing.T) {
 	}
 }
 
-func TestAction_GetError(t *testing.T) {
+func TestActor_GetError(t *testing.T) {
 	// arrange
 	actor := NewActor()
 
@@ -192,6 +240,30 @@ func TestAction_GetError(t *testing.T) {
 	// assert
 	if err == nil || val != "" {
 		t.Errorf("Expected error but got nil or value: %v, %s", err, val)
+	}
+}
+
+func TestActor_ConcurrentGet(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
+	actor.quiet = true
+	key := "hello"
+
+	// act
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			actor.Get(key)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	// assert
+	val, err := actor.Get(key)
+	if err != nil || val != "world" {
+		t.Errorf("Unexpected error or value after Set: %v, %s", err, val)
 	}
 }
 
@@ -232,6 +304,28 @@ func TestActor_DeleteError(t *testing.T) {
 	}
 }
 
+func TestActor_ConcurrentDelete(t *testing.T) {
+	// arrange
+	actor := NewActor()
+	actor.store["hello"] = "world"
+	key := "hello"
+
+	// act
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			actor.Delete(key)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	// assert
+	if _, ok := actor.store[key]; ok {
+		t.Errorf("Expected key to be deleted but still exists")
+	}
+}
+
 func TestActor_List(t *testing.T) {
 	// arrange
 	actor := NewActor()
@@ -251,4 +345,158 @@ func TestActor_List(t *testing.T) {
 	}
 }
 
-// TODO Performance/Benchmark tests
+func TestNewActor(t *testing.T) {
+	// act
+	actor := NewActor()
+
+	// assert
+	if actor == nil {
+		t.Errorf("Expected actor to be created but got nil")
+	}
+
+	if actor.store == nil {
+		t.Errorf("Expected store to be created but got nil")
+	}
+
+}
+
+// Benchmarks
+
+func BenchmarkActor_Set(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	for i := 0; i < b.N; i++ {
+		actor.Set("key"+strconv.Itoa(i), "value")
+	}
+}
+
+func BenchmarkActor_SetConcurrent(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			actor.Set("key"+strconv.Itoa(i), "value")
+		}
+	})
+}
+
+func BenchmarkActor_SetConcurrentSameKey(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			actor.Set("key", "value")
+		}
+	})
+}
+
+func BenchmarkActor_GetConcurrent(b *testing.B) {
+	actor := NewActor()
+
+	for i := 0; i < b.N; i++ {
+		actor.Set("key"+strconv.Itoa(i), "value")
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			actor.Get("key" + strconv.Itoa(i))
+		}
+	})
+}
+
+func BenchmarkActor_GetConcurrentSameKey(b *testing.B) {
+	actor := NewActor()
+	actor.store["key"] = "value"
+	actor.quiet = true
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			actor.Get("key")
+		}
+	})
+}
+
+func BenchmarkActor_DeleteConcurrent(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	for i := 0; i < b.N; i++ {
+		actor.Set("key"+strconv.Itoa(i), "value")
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			actor.Delete("key" + strconv.Itoa(i))
+		}
+	})
+}
+
+func BenchmarkActor_DeleteConcurrentSameKey(b *testing.B) {
+	actor := NewActor()
+	actor.store["key"] = "value"
+	actor.quiet = true
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			actor.Delete("key")
+		}
+	})
+}
+
+func BenchmarkActor_ConcurrentMixedOperations(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	for i := 0; i < b.N; i++ {
+		actor.Set("key"+strconv.Itoa(i), "value")
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			switch i % 3 {
+			case 0:
+				actor.Set("key"+strconv.Itoa(i), "value")
+			case 1:
+				actor.Get("key" + strconv.Itoa(i))
+			case 2:
+				actor.Delete("key" + strconv.Itoa(i))
+			}
+		}
+	})
+}
+
+func BenchmarkActor_StressTestSet(b *testing.B) {
+	actor := NewActor()
+	actor.quiet = true
+
+	b.SetBytes(10000)
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; pb.Next(); i++ {
+			actor.Set("key"+strconv.Itoa(i), strings.Repeat("value", 1000))
+		}
+	})
+}
+
+// Notes from tests/benchmarks:
+// after trying both GWT and AAA styles, I found that AAA was more readable and easier to follow for me
+// (also thinking from perspective of someone else reading the code)
+//
+// use a bool flag to suppress logs in tests, helpful to not flood console
+// you can use sync waitgroups in tests when testing concurrent operations
+// - helpful when you need to wait for all routines to finish
+//
+// buffers can be used to capture logs in tests we expect during error conditions
+// - helped with asserting the expected error messages
+//
+// the b.RunParallel func is used when you want to run multiple go routines in parallel
+// - this is great for simulating a proper real world scenario where operations can come in concurrently
+//
+// when testing a mixture of operations, using a switch statement helped to randomly select an operation
+// - another great way to simulate real world scenarios where all sorts of ops are coming in
+//
+// the b.SetBytes method is great for setting the "size" of the operation being tested
+// - simulating the program under high loads by having it process large amounts of data
+// - the repeated string is a way to simulate larger amounts of data (putting more stress on the actor.Set)

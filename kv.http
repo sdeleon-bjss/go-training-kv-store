@@ -1,11 +1,11 @@
 # vars
-@key = hello
+@key = example_key
 
 ### POST request to set a value
 POST http://localhost:8080/{{key}}
 Content-Type: text/plain
 
-world again
+world
 
 ### GET request to retrieve a value
 GET http://localhost:8080/{{key}}

@@ -72,16 +72,22 @@ func (c CommandDelete) Apply(a *Actor) error {
 type Actor struct {
 	store    map[string]string
 	commands chan Command
+
+	quiet bool // (logging purposes only) this is meant to suppress logs in tests
 }
 
 func (a *Actor) run() {
 	for cmd := range a.commands {
 		//fmt.Println("command:", cmd)
 		err := cmd.Apply(a)
-		if err != nil {
+		if err != nil && !a.quiet {
 			log.Printf("Error applying command: %v", err)
 		}
 	}
+}
+
+func (a *Actor) Close() {
+	close(a.commands)
 }
 
 func (a *Actor) Set(key, value string) error {
@@ -191,3 +197,7 @@ func KvHandler(a *Actor) http.HandlerFunc {
 		}
 	}
 }
+
+// Notes:
+// the actor model paradigm in a nutshell is a way to manage state in a concurrent environment
+// does a great job at isolating state (preventing race conditions)
